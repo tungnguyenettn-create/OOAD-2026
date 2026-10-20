@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Bác sĩ</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="layout">
+
+  <!-- Thanh điều hướng -->
+  <aside class="sidebar">
+    <div class="brand">Cổng Bác sĩ</div>
+    <div class="doctor">Mã bác sĩ: <strong id="doctorCode">---</strong></div>
+    <button class="nav active" data-target="appointments">Lịch hẹn mới</button>
+    <button class="nav" data-target="diagnose">Khám bệnh</button>
+    <button class="nav" data-target="patients">Bệnh nhân đã khám</button>
+    <a href="login.html" class="logout">Đăng xuất</a>
+  </aside>
+
+  <main class="main">
+
+    <!-- 1. Lịch hẹn mới -->
+    <section class="section active" id="appointments">
+      <h2>Lịch hẹn mới</h2>
+      <div class="card">
+        <h3>Danh sách lịch hẹn</h3>
+        <table>
+          <thead>
+            <tr><th>Giờ</th><th>Bệnh nhân</th><th>Lý do khám</th><th>Trạng thái</th><th></th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>08:30</td><td>Nguyễn Văn An</td><td>Đau đầu kéo dài</td>
+              <td><span class="badge pending">Chờ khám</span></td>
+              <td><button class="btn small secondary" onclick="showReports('Nguyễn Văn An')">Xem báo cáo cũ</button></td>
+            </tr>
+            <tr>
+              <td>09:15</td><td>Trần Thị Bình</td><td>Tái khám tiểu đường</td>
+              <td><span class="badge pending">Chờ khám</span></td>
+              <td><button class="btn small secondary" onclick="showReports('Trần Thị Bình')">Xem báo cáo cũ</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card" id="apptReports" style="display:none">
+        <h3 id="apptReportsTitle">Báo cáo cũ</h3>
+        <table>
+          <thead><tr><th>Ngày</th><th>Chẩn đoán</th><th>Ghi chú</th></tr></thead>
+          <tbody>
+            <tr><td>12/08/2026</td><td>Viêm họng cấp</td><td>Kê kháng sinh 5 ngày</td></tr>
+            <tr><td>03/05/2026</td><td>Rối loạn tiêu hóa</td><td>Điều chỉnh chế độ ăn</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 2. Khám bệnh -->
+    <section class="section" id="diagnose">
+      <h2>Khám bệnh</h2>
+      <div class="two-col">
+        <div class="card">
+          <h3>Tạo báo cáo</h3>
+          <form id="reportForm">
+            <div class="form-group">
+              <label>Bệnh nhân</label>
+              <select>
+                <option>Nguyễn Văn An</option>
+                <option>Trần Thị Bình</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Triệu chứng</label>
+              <textarea rows="3"></textarea>
+            </div>
+            <div class="form-group">
+              <label>Chẩn đoán</label>
+              <textarea rows="3"></textarea>
+            </div>
+            <div class="form-group">
+              <label>Hướng điều trị / đơn thuốc</label>
+              <textarea rows="3"></textarea>
+            </div>
+            <button type="submit" class="btn">Lưu báo cáo</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <h3>Kết quả kiểm nghiệm</h3>
+          <table>
+            <thead><tr><th>Xét nghiệm</th><th>Kết quả</th><th>Ngày</th></tr></thead>
+            <tbody>
+              <tr><td>Công thức máu</td><td>Bình thường</td><td>19/10/2026</td></tr>
+              <tr><td>Đường huyết</td><td>7.8 mmol/L</td><td>19/10/2026</td></tr>
+              <tr><td>X-quang ngực</td><td>Chưa có kết quả</td><td>20/10/2026</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. Bệnh nhân đã khám -->
+    <section class="section" id="patients">
+      <h2>Bệnh nhân đã khám</h2>
+      <div class="card">
+        <h3>Danh sách bệnh nhân</h3>
+        <table>
+          <thead><tr><th>Mã BN</th><th>Họ tên</th><th>Lần khám gần nhất</th><th></th></tr></thead>
+          <tbody>
+            <tr>
+              <td>BN101</td><td>Lê Minh Châu</td><td>15/10/2026</td>
+              <td><button class="btn small secondary" onclick="showPatientReports('Lê Minh Châu')">Xem báo cáo cũ</button></td>
+            </tr>
+            <tr>
+              <td>BN102</td><td>Phạm Quốc Dũng</td><td>10/10/2026</td>
+              <td><button class="btn small secondary" onclick="showPatientReports('Phạm Quốc Dũng')">Xem báo cáo cũ</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card" id="patientReports" style="display:none">
+        <h3 id="patientReportsTitle">Báo cáo cũ</h3>
+        <table>
+          <thead><tr><th>Ngày</th><th>Chẩn đoán</th><th>Hướng điều trị</th></tr></thead>
+          <tbody>
+            <tr><td>15/10/2026</td><td>Cao huyết áp độ 1</td><td>Theo dõi, giảm muối</td></tr>
+            <tr><td>20/07/2026</td><td>Cảm cúm</td><td>Nghỉ ngơi, hạ sốt</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  // Hiển thị mã bác sĩ đã đăng nhập (demo)
+  var id = sessionStorage.getItem("doctorId");
+  if (id) document.getElementById("doctorCode").textContent = id;
+
+  // Chuyển giữa các mục
+  document.querySelectorAll(".nav").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      document.querySelectorAll(".nav").forEach(function (b) { b.classList.remove("active"); });
+      document.querySelectorAll(".section").forEach(function (s) { s.classList.remove("active"); });
+      btn.classList.add("active");
+      document.getElementById(btn.dataset.target).classList.add("active");
+    });
+  });
+
+  function showReports(name) {
+    document.getElementById("apptReportsTitle").textContent = "Báo cáo cũ - " + name;
+    document.getElementById("apptReports").style.display = "block";
+  }
+
+  function showPatientReports(name) {
+    document.getElementById("patientReportsTitle").textContent = "Báo cáo cũ - " + name;
+    document.getElementById("patientReports").style.display = "block";
+  }
+
+  document.getElementById("reportForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    alert("Đã lưu báo cáo (demo).");
+  });
+</script>
+</body>
+</html>

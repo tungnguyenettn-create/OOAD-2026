@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Đăng nhập Bác sĩ</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="login-page">
+  <form class="login-card" id="loginForm" autocomplete="off">
+    <h1>Đăng nhập Bác sĩ</h1>
+    <p class="subtitle">Hệ thống quản lý khám bệnh</p>
+
+    <p class="error" id="error">Vui lòng nhập đầy đủ Mã bác sĩ và Mật khẩu.</p>
+
+    <div class="form-group">
+      <label for="doctorId">Mã bác sĩ</label>
+      <input type="text" id="doctorId" name="doctorId" placeholder="VD: BS001" required>
+    </div>
+
+    <div class="form-group">
+      <label for="password">Mật khẩu</label>
+      <input type="password" id="password" name="password" placeholder="Nhập mật khẩu" required>
+    </div>
+
+    <button type="submit" class="btn">Đăng nhập</button>
+  </form>
+
+  <script>
+    // DEMO: chưa có xác thực thật. Khi có backend, hãy gửi dữ liệu lên server
+    // (qua HTTPS) và chỉ chuyển trang khi server xác nhận thành công.
+    document.getElementById("loginForm").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var id = document.getElementById("doctorId").value.trim();
+      var pw = document.getElementById("password").value;
+      if (!id || !pw) {
+        document.getElementById("error").style.display = "block";
+        return;
+      }
+      sessionStorage.setItem("doctorId", id);
+      window.location.href = "dashboard.html";
+    });
+  </script>
+</body>
+</html>
