@@ -85,6 +85,23 @@ class User(Base):
         onupdate=func.current_timestamp(),
     )
 
+class Department(Base):
+    __tablename__ = "departments"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    name = Column(String(100), nullable=False, unique=True, index=True)
+    specialization = Column(String(100), nullable=True)
+    description = Column(String(255), nullable=True)
+
+    created_at = Column(
+        DateTime,
+        nullable=False,
+        server_default=func.current_timestamp(),
+    )
+
+    doctors = relationship("Doctor", back_populates="department_rel")
+
+
 class Doctor(Base):
     __tablename__ = "doctors"
 
@@ -98,10 +115,21 @@ class Doctor(Base):
     )
 
     full_name = Column(String(100), nullable=False)
-    specialization = Column(String(100), nullable=True)
     license_number = Column(String(50), nullable=True, unique=True)
     phone = Column(String(20), nullable=True)
+
+    department_id = Column(
+        Integer,
+        ForeignKey("departments.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    # Legacy / cached string fields for backward compatibility
+    specialization = Column(String(100), nullable=True)
     department = Column(String(100), nullable=True)
+
+    department_rel = relationship("Department", back_populates="doctors")
 
     created_at = Column(
         DateTime,

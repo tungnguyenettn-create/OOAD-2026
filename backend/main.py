@@ -17,6 +17,7 @@ from models import (
     Patient,
     User,
     Doctor,
+    Department,
     PatientAccount,
     DoctorPatient,
     Appointment,
@@ -53,6 +54,19 @@ app.add_middleware(
 # Pydantic schemas
 # =========================
 from pydantic import EmailStr, Field, field_validator
+class DepartmentCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    specialization: Optional[str] = Field(default=None, max_length=100)
+    description: Optional[str] = Field(default=None, max_length=255)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name_not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Department name cannot be blank")
+        return value
+
 class DoctorCreate(BaseModel):
     username: str = Field(min_length=3, max_length=50)
     email: EmailStr
@@ -63,6 +77,7 @@ class DoctorCreate(BaseModel):
     license_number: Optional[str] = Field(default=None, max_length=50)
     phone: Optional[str] = Field(default=None, max_length=20)
     department: Optional[str] = Field(default=None, max_length=100)
+    department_id: Optional[int] = Field(default=None)
 
     @field_validator("username", "full_name")
     @classmethod
@@ -78,6 +93,7 @@ class DoctorUpdate(BaseModel):
     license_number: Optional[str] = Field(default=None, max_length=50)
     phone: Optional[str] = Field(default=None, max_length=20)
     department: Optional[str] = Field(default=None, max_length=100)
+    department_id: Optional[int] = Field(default=None)
 
     @field_validator("full_name")
     @classmethod
@@ -555,6 +571,66 @@ def register_patient(
             status_code=500,
             detail="Failed to register patient",
         ) from exc
+# =========================
+# Department endpoints
+# =========================
+
+@app.get("/api/departments")
+def get_departments(
+    db: Session = Depends(get_db),
+):
+    try:
+        departments = db.query(Department).order_by(Department.name.asc()).all()
+        return [
+            {
+                "id": dept.id,
+                "name": dept.name,
+                "specialization": dept.specialization,
+                "description": dept.description,
+            }
+            for dept in departments
+        ]
+    except SQLAlchemyError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to retrieve departments",
+        ) from exc
+
+
+@app.post("/api/departments", status_code=201)
+def create_department(
+    dept_data: DepartmentCreate,
+    current_user: User = Depends(require_roles("admin")),
+    db: Session = Depends(get_db),
+):
+    name = dept_data.name.strip()
+    existing = db.query(Department).filter(Department.name == name).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Department already exists")
+
+    dept = Department(
+        name=name,
+        specialization=dept_data.specialization.strip() if dept_data.specialization else None,
+        description=dept_data.description.strip() if dept_data.description else None,
+    )
+    try:
+        db.add(dept)
+        db.commit()
+        db.refresh(dept)
+        return {
+            "id": dept.id,
+            "name": dept.name,
+            "specialization": dept.specialization,
+            "description": dept.description,
+        }
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to create department",
+        ) from exc
+
+
 @app.get("/api/doctors")
 def get_doctors(
     current_user: User = Depends(require_roles("admin")),
@@ -576,10 +652,19 @@ def get_doctors(
                 "email": user.email,
                 "is_active": bool(user.is_active),
                 "full_name": doctor.full_name,
-                "specialization": doctor.specialization,
+                "specialization": (
+                    doctor.department_rel.specialization
+                    if doctor.department_rel and doctor.department_rel.specialization
+                    else doctor.specialization
+                ),
                 "license_number": doctor.license_number,
                 "phone": doctor.phone,
-                "department": doctor.department,
+                "department": (
+                    doctor.department_rel.name
+                    if doctor.department_rel
+                    else doctor.department
+                ),
+                "department_id": doctor.department_id,
             }
             for doctor, user in doctors
         ]
@@ -628,6 +713,23 @@ def create_doctor(
             detail="License number already exists",
         )
 
+    # Resolve department reference if provided
+    department_id = doctor_data.department_id
+    dept_obj = None
+    if department_id:
+        dept_obj = db.query(Department).filter(Department.id == department_id).first()
+    elif doctor_data.department:
+        dept_obj = db.query(Department).filter(Department.name == doctor_data.department.strip()).first()
+        if dept_obj:
+            department_id = dept_obj.id
+
+    dept_name = dept_obj.name if dept_obj else doctor_data.department
+    dept_spec = (
+        dept_obj.specialization
+        if (dept_obj and dept_obj.specialization)
+        else doctor_data.specialization
+    )
+
     try:
         # Tạo tài khoản đăng nhập
         user = User(
@@ -645,10 +747,11 @@ def create_doctor(
         doctor = Doctor(
             user_id=user.id,
             full_name=doctor_data.full_name.strip(),
-            specialization=doctor_data.specialization,
+            specialization=dept_spec,
             license_number=license_number,
             phone=doctor_data.phone,
-            department=doctor_data.department,
+            department=dept_name,
+            department_id=department_id,
         )
 
         db.add(doctor)
@@ -665,10 +768,19 @@ def create_doctor(
                 "username": user.username,
                 "email": user.email,
                 "full_name": doctor.full_name,
-                "specialization": doctor.specialization,
+                "specialization": (
+                    doctor.department_rel.specialization
+                    if doctor.department_rel and doctor.department_rel.specialization
+                    else doctor.specialization
+                ),
                 "license_number": doctor.license_number,
                 "phone": doctor.phone,
-                "department": doctor.department,
+                "department": (
+                    doctor.department_rel.name
+                    if doctor.department_rel
+                    else doctor.department
+                ),
+                "department_id": doctor.department_id,
             },
         }
 
@@ -726,12 +838,29 @@ def update_doctor(
                 detail="License number already exists",
             )
 
+    department_id = doctor_data.department_id
+    dept_obj = None
+    if department_id:
+        dept_obj = db.query(Department).filter(Department.id == department_id).first()
+    elif doctor_data.department:
+        dept_obj = db.query(Department).filter(Department.name == doctor_data.department.strip()).first()
+        if dept_obj:
+            department_id = dept_obj.id
+
+    dept_name = dept_obj.name if dept_obj else doctor_data.department
+    dept_spec = (
+        dept_obj.specialization
+        if (dept_obj and dept_obj.specialization)
+        else doctor_data.specialization
+    )
+
     try:
         doctor.full_name = doctor_data.full_name.strip()
-        doctor.specialization = doctor_data.specialization
+        doctor.specialization = dept_spec
         doctor.license_number = license_number
         doctor.phone = doctor_data.phone
-        doctor.department = doctor_data.department
+        doctor.department = dept_name
+        doctor.department_id = department_id
         user.email = email
 
         db.commit()
@@ -747,10 +876,19 @@ def update_doctor(
                 "email": user.email,
                 "is_active": bool(user.is_active),
                 "full_name": doctor.full_name,
-                "specialization": doctor.specialization,
+                "specialization": (
+                    doctor.department_rel.specialization
+                    if doctor.department_rel and doctor.department_rel.specialization
+                    else doctor.specialization
+                ),
                 "license_number": doctor.license_number,
                 "phone": doctor.phone,
-                "department": doctor.department,
+                "department": (
+                    doctor.department_rel.name
+                    if doctor.department_rel
+                    else doctor.department
+                ),
+                "department_id": doctor.department_id,
             },
         }
     except SQLAlchemyError as exc:
@@ -759,6 +897,190 @@ def update_doctor(
             status_code=500,
             detail="Failed to update doctor",
         ) from exc
+# =========================
+# Specializations & Doctors by Specialization
+# =========================
+
+@app.get("/api/specializations")
+def get_specializations(
+    db: Session = Depends(get_db),
+):
+    try:
+        # Collect from Department and Doctor models
+        dept_specs = db.query(Department.specialization).filter(Department.specialization.isnot(None)).all()
+        doc_specs = db.query(Doctor.specialization).filter(Doctor.specialization.isnot(None)).all()
+        
+        specs = sorted({s[0].strip() for s in (dept_specs + doc_specs) if s[0] and s[0].strip()})
+        return specs
+    except SQLAlchemyError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to retrieve specializations",
+        ) from exc
+
+
+@app.get("/api/doctors/by-specialization")
+def get_doctors_by_specialization(
+    specialization: str,
+    db: Session = Depends(get_db),
+):
+    spec = specialization.strip()
+    try:
+        doctors = (
+            db.query(Doctor, User)
+            .join(User, Doctor.user_id == User.id)
+            .outerjoin(Department, Doctor.department_id == Department.id)
+            .filter(
+                User.is_active == 1,
+                or_(
+                    Doctor.specialization == spec,
+                    Department.specialization == spec,
+                ),
+            )
+            .order_by(Doctor.full_name.asc())
+            .all()
+        )
+
+        return [
+            {
+                "id": doctor.id,
+                "full_name": doctor.full_name,
+                "specialization": (
+                    doctor.department_rel.specialization
+                    if doctor.department_rel and doctor.department_rel.specialization
+                    else doctor.specialization
+                ),
+                "department": (
+                    doctor.department_rel.name
+                    if doctor.department_rel
+                    else doctor.department
+                ),
+                "license_number": doctor.license_number,
+                "phone": doctor.phone,
+            }
+            for doctor, user in doctors
+        ]
+    except SQLAlchemyError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to retrieve doctors for specialization",
+        ) from exc
+
+
+# =========================
+# Availability check for appointments
+# =========================
+
+@app.get("/api/appointments/availability")
+def check_appointment_availability(
+    appointment_date: date,
+    appointment_time: time,
+    specialization: Optional[str] = None,
+    doctor_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Checks appointment availability and queue load for a given date/time,
+    allowing the frontend to warn the patient about queue size or potential delays.
+    """
+    if doctor_id:
+        doc = db.query(Doctor).filter(Doctor.id == doctor_id).first()
+        if not doc:
+            raise HTTPException(status_code=404, detail="Doctor not found")
+
+        conflict_count = (
+            db.query(Appointment)
+            .filter(
+                Appointment.doctor_id == doctor_id,
+                Appointment.appointment_date == appointment_date,
+                Appointment.appointment_time == appointment_time,
+                Appointment.status.in_(["Pending", "Confirmed"]),
+            )
+            .count()
+        )
+
+        warning = None
+        if conflict_count > 0:
+            warning = (
+                f"Bác sĩ {doc.full_name} hiện đã có {conflict_count} người đặt tại khung giờ này. "
+                "Bạn vẫn có thể đặt lịch nhưng có thể sẽ phải chờ hoặc được sắp xếp hỗ trợ thêm."
+            )
+
+        return {
+            "doctor_id": doctor_id,
+            "doctor_name": doc.full_name,
+            "booked_count": conflict_count,
+            "has_delay_risk": conflict_count > 0,
+            "warning_message": warning,
+        }
+
+    # By specialization or hospital-wide
+    query_doctors = (
+        db.query(Doctor)
+        .join(User, Doctor.user_id == User.id)
+        .outerjoin(Department, Doctor.department_id == Department.id)
+        .filter(User.is_active == 1)
+    )
+
+    if specialization:
+        spec = specialization.strip()
+        query_doctors = query_doctors.filter(
+            or_(
+                Doctor.specialization == spec,
+                Department.specialization == spec,
+            )
+        )
+
+    all_matching_doctors = query_doctors.all()
+    total_doctors = len(all_matching_doctors)
+
+    if total_doctors == 0:
+        return {
+            "specialization": specialization,
+            "total_doctors": 0,
+            "booked_count": 0,
+            "available_doctors_count": 0,
+            "has_delay_risk": True,
+            "warning_message": "Hiện chưa có bác sĩ đang làm việc ở chuyên khoa này.",
+        }
+
+    doc_ids = [d.id for d in all_matching_doctors]
+    conflicts_count = (
+        db.query(Appointment)
+        .filter(
+            Appointment.doctor_id.in_(doc_ids),
+            Appointment.appointment_date == appointment_date,
+            Appointment.appointment_time == appointment_time,
+            Appointment.status.in_(["Pending", "Confirmed"]),
+        )
+        .count()
+    )
+
+    available_count = max(0, total_doctors - conflicts_count)
+    has_delay_risk = available_count == 0
+
+    warning = None
+    if has_delay_risk:
+        warning = (
+            f"Tất cả các bác sĩ chuyên khoa {specialization or 'này'} đều đã có {conflicts_count} lịch hẹn tại khung giờ này. "
+            "Bạn vẫn có thể tiếp tục đặt lịch khám, bệnh viện sẽ xếp bạn vào hàng đợi ưu tiên tiếp theo."
+        )
+    elif conflicts_count > 0:
+        warning = (
+            f"Khung giờ này đã có {conflicts_count} lịch hẹn được đăng ký trước. "
+            "Bạn có thể phải chờ một chút khi đến khám."
+        )
+
+    return {
+        "specialization": specialization,
+        "total_doctors": total_doctors,
+        "booked_count": conflicts_count,
+        "available_doctors_count": available_count,
+        "has_delay_risk": has_delay_risk,
+        "warning_message": warning,
+    }
+
+
 # =========================
 # Appointment schemas
 # =========================
@@ -770,10 +1092,14 @@ class AppointmentCreate(BaseModel):
     appointment_date: date
     appointment_time: time
     reason: Optional[str] = Field(default=None, max_length=2000)
+    specialization: Optional[str] = Field(default=None, max_length=100)
+    doctor_id: Optional[int] = None
 
 
 class AppointmentStatusUpdate(BaseModel):
     status: str
+    notes: Optional[str] = Field(default=None, max_length=2000)
+    reassign_to_other_doctor: Optional[bool] = False
 
 
 class AppointmentResponse(BaseModel):
@@ -788,6 +1114,8 @@ class AppointmentResponse(BaseModel):
     notes: Optional[str] = None
     status: str
     created_at: Optional[datetime] = None
+    warning_message: Optional[str] = None
+    queue_number: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 # =========================
@@ -924,79 +1252,122 @@ def create_appointment(
             detail="Appointment time must be in the future",
         )
 
-    # 3. Lấy danh sách bác sĩ có tài khoản đang hoạt động
-    doctors = (
-        db.query(Doctor)
-        .join(User, Doctor.user_id == User.id)
-        .filter(User.is_active.is_(True))
-        .order_by(Doctor.id.asc())
-        .all()
-    )
+    # 3. Lấy danh sách bác sĩ (hoặc bác sĩ cụ thể nếu được chọn)
+    doctor = None
+    warning_message = None
+    queue_number = 1
 
-    if not doctors:
-        raise HTTPException(
-            status_code=409,
-            detail="No active doctors are currently available",
-        )
-
-    # 4. Loại bỏ bác sĩ đã có lịch trùng thời gian
-    available_doctors = []
-
-    for doctor in doctors:
-        conflicting_appointment = (
-            db.query(Appointment.id)
-            .filter(
-                Appointment.doctor_id == doctor.id,
-                Appointment.appointment_date
-                == appointment_data.appointment_date,
-                Appointment.appointment_time
-                == appointment_data.appointment_time,
-                Appointment.status.in_(["Pending", "Confirmed"]),
-            )
+    if appointment_data.doctor_id:
+        # Cách 2: Bệnh nhân đã chọn bác sĩ cụ thể
+        chosen_doctor = (
+            db.query(Doctor)
+            .join(User, Doctor.user_id == User.id)
+            .filter(Doctor.id == appointment_data.doctor_id, User.is_active == 1)
             .first()
         )
+        if not chosen_doctor:
+            raise HTTPException(
+                status_code=404,
+                detail="Selected doctor was not found or is inactive",
+            )
 
-        if conflicting_appointment is None:
-            available_doctors.append(doctor)
-
-    if not available_doctors:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "No doctors are available at the selected date and time. "
-                "Please choose another time."
-            ),
-        )
-
-    # 5. Trong các bác sĩ phù hợp, ưu tiên người có ít lịch đang hoạt động nhất.
-    # Nếu số lượng bằng nhau, chọn bác sĩ có ID nhỏ hơn.
-    doctor_loads = []
-
-    for doctor in available_doctors:
-        active_appointment_count = (
-            db.query(Appointment)
+        # Đếm số lượng người đã đặt trùng giờ với bác sĩ này
+        existing_bookings = (
+            db.query(Appointment.id)
             .filter(
-                Appointment.doctor_id == doctor.id,
+                Appointment.doctor_id == chosen_doctor.id,
+                Appointment.appointment_date == appointment_data.appointment_date,
+                Appointment.appointment_time == appointment_data.appointment_time,
                 Appointment.status.in_(["Pending", "Confirmed"]),
             )
             .count()
         )
+        if existing_bookings > 0:
+            queue_number = existing_bookings + 1
+            warning_message = (
+                f"Lưu ý: Bác sĩ {chosen_doctor.full_name} đã có {existing_bookings} bệnh nhân đặt lịch ở khung giờ này. "
+                f"Lịch hẹn của bạn đã được ghi nhận (Số thứ tự khám: #{queue_number}). Có thể bạn sẽ phải chờ đến lượt."
+            )
+        doctor = chosen_doctor
 
-        doctor_loads.append(
-            (active_appointment_count, doctor.id, doctor)
+    else:
+        # Cách 1: Tự động phân công bác sĩ (có lọc theo specialization nếu cung cấp)
+        query_doctors = (
+            db.query(Doctor)
+            .join(User, Doctor.user_id == User.id)
+            .outerjoin(Department, Doctor.department_id == Department.id)
+            .filter(User.is_active == 1)
         )
 
-    doctor_loads.sort(key=lambda item: (item[0], item[1]))
-    doctor = doctor_loads[0][2]
+        if appointment_data.specialization:
+            spec = appointment_data.specialization.strip()
+            query_doctors = query_doctors.filter(
+                or_(
+                    Doctor.specialization == spec,
+                    Department.specialization == spec,
+                )
+            )
 
-    # 6. Tạo lịch hẹn
+        doctors = query_doctors.order_by(Doctor.id.asc()).all()
+
+        if not doctors:
+            raise HTTPException(
+                status_code=404,
+                detail="No active doctors found matching the criteria",
+            )
+
+        # 4. Tìm các bác sĩ hoàn toàn rảnh vào khung giờ này
+        free_doctors = []
+        doctor_conflict_counts = []
+
+        for d in doctors:
+            conflicting_count = (
+                db.query(Appointment.id)
+                .filter(
+                    Appointment.doctor_id == d.id,
+                    Appointment.appointment_date == appointment_data.appointment_date,
+                    Appointment.appointment_time == appointment_data.appointment_time,
+                    Appointment.status.in_(["Pending", "Confirmed"]),
+                )
+                .count()
+            )
+            doctor_conflict_counts.append((conflicting_count, d))
+            if conflicting_count == 0:
+                free_doctors.append(d)
+
+        if free_doctors:
+            # Ưu tiên bác sĩ rảnh có ít tổng số lịch nhất
+            doctor_loads = []
+            for d in free_doctors:
+                active_count = (
+                    db.query(Appointment)
+                    .filter(
+                        Appointment.doctor_id == d.id,
+                        Appointment.status.in_(["Pending", "Confirmed"]),
+                    )
+                    .count()
+                )
+                doctor_loads.append((active_count, d.id, d))
+            doctor_loads.sort(key=lambda item: (item[0], item[1]))
+            doctor = doctor_loads[0][2]
+        else:
+            # Tất cả bác sĩ đều đã có người đặt -> Chọn bác sĩ có ít người chờ nhất ở khung giờ đó thay vì từ chối
+            doctor_conflict_counts.sort(key=lambda item: (item[0], item[1].id))
+            conflict_count, doctor = doctor_conflict_counts[0]
+            queue_number = conflict_count + 1
+            warning_message = (
+                f"Lưu ý: Tất cả bác sĩ chuyên khoa {appointment_data.specialization or ''} đều đã có lịch hẹn ở khung giờ này. "
+                f"Lịch hẹn của bạn đã được phân công cho {doctor.full_name} (Số thứ tự: #{queue_number}). Có thể bạn sẽ phải chờ."
+            )
+
+    # 6. Tạo lịch hẹn (Tự động Xác nhận / Confirmed)
     appointment = Appointment(
         patient_id=patient.id,
         doctor_id=doctor.id,
         appointment_date=appointment_data.appointment_date,
         appointment_time=appointment_data.appointment_time,
         reason=appointment_data.reason,
-        status="Pending",
+        status="Confirmed",
     )
 
     try:
@@ -1016,6 +1387,8 @@ def create_appointment(
             "notes": appointment.notes,
             "status": appointment.status,
             "created_at": appointment.created_at,
+            "warning_message": warning_message,
+            "queue_number": queue_number,
         }
 
     except SQLAlchemyError as exc:
@@ -1085,8 +1458,8 @@ def update_appointment_status(
             )
 
         allowed_transitions = {
-            "Pending": {"Confirmed", "Rejected"},
-            "Confirmed": {"Completed"},
+            "Pending": {"Confirmed", "Rejected", "Cancelled"},
+            "Confirmed": {"Rejected", "Cancelled", "Completed"},
             "Completed": set(),
             "Cancelled": set(),
             "Rejected": set(),
@@ -1133,7 +1506,45 @@ def update_appointment_status(
             ),
         )
 
-    appointment.status = status_data.status
+    if status_data.notes:
+        appointment.notes = (
+            f"{appointment.notes}\n{status_data.notes}".strip()
+            if appointment.notes
+            else status_data.notes
+        )
+
+    # Nếu bác sĩ hoặc admin từ chối (Rejected) và có cờ reassign_to_other_doctor
+    reassigned_doctor_name = None
+    if status_data.status == "Rejected" and status_data.reassign_to_other_doctor:
+        # Tìm bác sĩ khác cùng chuyên khoa
+        current_doc = db.query(Doctor).filter(Doctor.id == appointment.doctor_id).first()
+        spec = current_doc.department_rel.specialization if (current_doc and current_doc.department_rel) else (current_doc.specialization if current_doc else None)
+        
+        replacement_doc = (
+            db.query(Doctor)
+            .join(User, Doctor.user_id == User.id)
+            .outerjoin(Department, Doctor.department_id == Department.id)
+            .filter(
+                User.is_active == 1,
+                Doctor.id != appointment.doctor_id,
+                or_(
+                    Doctor.specialization == spec,
+                    Department.specialization == spec,
+                ) if spec else True,
+            )
+            .first()
+        )
+        if replacement_doc:
+            appointment.doctor_id = replacement_doc.id
+            appointment.status = "Confirmed"
+            reassigned_doctor_name = replacement_doc.full_name
+            appointment.notes = (
+                f"{appointment.notes or ''}\n[Hệ thống]: Lịch hẹn đã được tự động chuyển sang {replacement_doc.full_name}."
+            ).strip()
+        else:
+            appointment.status = status_data.status
+    else:
+        appointment.status = status_data.status
 
     try:
         db.commit()
@@ -1142,6 +1553,9 @@ def update_appointment_status(
             "message": "Appointment status updated successfully",
             "appointment_id": appointment.id,
             "status": appointment.status,
+            "doctor_id": appointment.doctor_id,
+            "reassigned_to": reassigned_doctor_name,
+            "notes": appointment.notes,
         }
 
     except SQLAlchemyError as exc:

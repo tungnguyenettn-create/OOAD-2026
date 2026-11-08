@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useContext } from "react";
 import {
   HeartPulse, LayoutDashboard, Users, CalendarDays, ClipboardList, Pill,
   LogOut, Search, Bell, Clock3, UserRound, RefreshCw, AlertCircle,
   CheckCircle2, Stethoscope, ArrowUpRight, Check, X, Plus, FileText,
 } from "lucide-react";
-import "./DoctorDashboard.css";
+import { AuthContext } from "../../auth/AuthContext";
+import "../../styles/DoctorDashboard.css"; 
 
 const MENU_ITEMS = [
   { id: "overview", label: "Tổng quan", icon: LayoutDashboard },
@@ -21,7 +22,9 @@ const EMPTY_RECORD_FORM = {
   doctor_notes: "",
 };
 
-export default function DoctorDashboard({ onLogout }) {
+export default function DoctorDashboard() {
+  const { token, logout } = useContext(AuthContext);
+
   const [activePage, setActivePage] = useState("overview");
   const [patients, setPatients] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -34,6 +37,10 @@ export default function DoctorDashboard({ onLogout }) {
   const [appointmentStatusFilter, setAppointmentStatusFilter] = useState("All");
   const [updatingAppointmentId, setUpdatingAppointmentId] = useState(null);
 
+  // Modal từ chối / hủy lịch hẹn
+  const [rejectingAppointment, setRejectingAppointment] = useState(null);
+  const [rejectForm, setRejectForm] = useState({ notes: "", reassign_to_other_doctor: true });
+
   const [medicalRecords, setMedicalRecords] = useState([]);
   const [recordsLoading, setRecordsLoading] = useState(false);
   const [recordsError, setRecordsError] = useState("");
@@ -43,26 +50,20 @@ export default function DoctorDashboard({ onLogout }) {
   const [recordForm, setRecordForm] = useState(EMPTY_RECORD_FORM);
   const [savingRecord, setSavingRecord] = useState(false);
 
-  function getToken() {
-    const token = sessionStorage.getItem("access_token");
-    if (!token) onLogout?.();
-    return token;
-  }
-
   async function readResponse(response, fallbackMessage) {
-    const data = await response.json().catch(() => ({}));
     if (response.status === 401) {
-      onLogout?.();
+      logout();
       throw new Error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
     }
+    const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(typeof data.detail === "string" ? data.detail : fallbackMessage);
+      const message = typeof data.detail === "string" ? data.detail : fallbackMessage;
+      throw new Error(message || fallbackMessage);
     }
     return data;
   }
 
   async function loadPatients() {
-    const token = getToken();
     if (!token) return;
     setLoading(true);
     setError("");
@@ -71,17 +72,15 @@ export default function DoctorDashboard({ onLogout }) {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await readResponse(response, "Không thể tải danh sách bệnh nhân.");
-      if (!Array.isArray(data)) throw new Error("Dữ liệu bệnh nhân không hợp lệ.");
-      setPatients(data);
+      setPatients(Array.isArray(data) ? data : []);
     } catch (err) {
-      setError(err.message || "Không thể kết nối đến máy chủ.");
+      setError(err.message || "Không thể tải danh sách bệnh nhân.");
     } finally {
       setLoading(false);
     }
   }
 
   async function loadAppointments() {
-    const token = getToken();
     if (!token) return;
     setAppointmentsLoading(true);
     setAppointmentsError("");
@@ -90,17 +89,15 @@ export default function DoctorDashboard({ onLogout }) {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await readResponse(response, "Không thể tải lịch khám.");
-      if (!Array.isArray(data)) throw new Error("Dữ liệu lịch khám không hợp lệ.");
-      setAppointments(data);
+      setAppointments(Array.isArray(data) ? data : []);
     } catch (err) {
-      setAppointmentsError(err.message || "Không thể kết nối đến máy chủ.");
+      setAppointmentsError(err.message || "Không thể tải lịch khám.");
     } finally {
       setAppointmentsLoading(false);
     }
   }
 
   async function loadMedicalRecords() {
-    const token = getToken();
     if (!token) return;
     setRecordsLoading(true);
     setRecordsError("");
@@ -109,31 +106,27 @@ export default function DoctorDashboard({ onLogout }) {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await readResponse(response, "Không thể tải hồ sơ bệnh án.");
-      if (!Array.isArray(data)) throw new Error("Dữ liệu hồ sơ bệnh án không hợp lệ.");
-      setMedicalRecords(data);
+      setMedicalRecords(Array.isArray(data) ? data : []);
     } catch (err) {
-      setRecordsError(err.message || "Không thể kết nối đến máy chủ.");
+      setRecordsError(err.message || "Không thể tải hồ sơ bệnh án.");
     } finally {
       setRecordsLoading(false);
     }
   }
 
-  
-useEffect(() => {
-    loadPatients();
-    loadAppointments();
-    loadMedicalRecords();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-}, []);
-
+  useEffect(() => {
+    if (token) {
+      loadPatients();
+      loadAppointments();
+      loadMedicalRecords();
+    }
+  }, [token]);
 
   useEffect(() => {
     if (activePage === "records") loadMedicalRecords();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePage]);
 
-  async function updateAppointmentStatus(appointmentId, status) {
-    const token = getToken();
+  async function updateAppointmentStatus(appointmentId, status, extraData = {}) {
     if (!token) return;
     setUpdatingAppointmentId(appointmentId);
     setAppointmentsError("");
@@ -144,15 +137,33 @@ useEffect(() => {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, ...extraData }),
       });
-      await readResponse(response, "Không thể cập nhật lịch hẹn.");
+      const res = await readResponse(response, "Không thể cập nhật lịch hẹn.");
+      if (res?.message) {
+        setRecordMessage(res.message);
+      }
+      setRejectingAppointment(null);
       await loadAppointments();
     } catch (err) {
       setAppointmentsError(err.message || "Không thể cập nhật lịch hẹn.");
     } finally {
       setUpdatingAppointmentId(null);
     }
+  }
+
+  function handleOpenRejectModal(appointment) {
+    setRejectingAppointment(appointment);
+    setRejectForm({ notes: "", reassign_to_other_doctor: true });
+  }
+
+  async function handleConfirmReject(e) {
+    e.preventDefault();
+    if (!rejectingAppointment) return;
+    await updateAppointmentStatus(rejectingAppointment.id, "Rejected", {
+      notes: rejectForm.notes.trim() || undefined,
+      reassign_to_other_doctor: rejectForm.reassign_to_other_doctor,
+    });
   }
 
   function openRecordForm(appointment) {
@@ -176,7 +187,6 @@ useEffect(() => {
       setRecordsError("Vui lòng chọn lịch khám trước khi tạo hồ sơ.");
       return;
     }
-    const token = getToken();
     if (!token) return;
     setSavingRecord(true);
     setRecordsError("");
@@ -258,10 +268,34 @@ useEffect(() => {
     if (!items.length) return <div className="doctor-empty"><CalendarDays size={32} /><strong>{appointments.length ? "Không tìm thấy lịch phù hợp" : "Chưa có lịch khám"}</strong><p>{appointments.length ? "Hãy đổi từ khóa hoặc bộ lọc." : "Lịch hẹn được phân công cho bạn sẽ xuất hiện tại đây."}</p></div>;
     return <div className="doctor-table-wrap"><table className="doctor-table"><thead><tr><th>BỆNH NHÂN</th><th>NGÀY / GIỜ</th><th>LÝ DO KHÁM</th><th>TRẠNG THÁI</th>{withActions && <th>THAO TÁC</th>}</tr></thead><tbody>
       {items.map((appointment) => <tr key={appointment.id}><td><div className="doctor-patient-cell"><div className="doctor-patient-avatar"><UserRound size={18} /></div><div><strong>{appointment.patient_name || `Bệnh nhân #${appointment.patient_id}`}</strong><span>Mã lịch: #{appointment.id}</span></div></div></td><td>{formatDate(appointment.appointment_date)}<br /><span className="doctor-secondary-text">{formatTime(appointment.appointment_time)}</span></td><td>{appointment.reason || "Không có ghi chú"}</td><td><span className={`doctor-status ${appointmentStatusClass(appointment.status)}`}>{appointmentStatusLabel(appointment.status)}</span></td>{withActions && <td><div className="doctor-appointment-actions">
-        {appointment.status === "Pending" && <><button type="button" className="doctor-button doctor-button-secondary" disabled={updatingAppointmentId === appointment.id} onClick={() => updateAppointmentStatus(appointment.id, "Confirmed")}><Check size={15} /> Xác nhận</button><button type="button" className="doctor-button doctor-button-danger" disabled={updatingAppointmentId === appointment.id} onClick={() => updateAppointmentStatus(appointment.id, "Rejected")}><X size={15} /> Từ chối</button></>}
-        {appointment.status === "Confirmed" && <button type="button" className="doctor-button doctor-button-secondary" disabled={updatingAppointmentId === appointment.id} onClick={() => updateAppointmentStatus(appointment.id, "Completed")}><Check size={15} /> Hoàn thành</button>}
-        {appointment.status === "Completed" && !existingAppointmentIds.has(Number(appointment.id)) && <button type="button" className="doctor-button doctor-button-secondary" onClick={() => openRecordForm(appointment)}><Plus size={15} /> Tạo bệnh án</button>}
-        {["Completed", "Cancelled", "Rejected"].includes(appointment.status) && !(appointment.status === "Completed" && !existingAppointmentIds.has(Number(appointment.id))) && <span className="doctor-secondary-text">Không có thao tác</span>}
+        {appointment.status === "Pending" && (
+          <>
+            <button type="button" className="doctor-button doctor-button-secondary" disabled={updatingAppointmentId === appointment.id} onClick={() => updateAppointmentStatus(appointment.id, "Confirmed")}>
+              <Check size={15} /> Xác nhận
+            </button>
+            <button type="button" className="doctor-button doctor-button-danger" disabled={updatingAppointmentId === appointment.id} onClick={() => handleOpenRejectModal(appointment)}>
+              <X size={15} /> Từ chối
+            </button>
+          </>
+        )}
+        {appointment.status === "Confirmed" && (
+          <>
+            <button type="button" className="doctor-button doctor-button-secondary" disabled={updatingAppointmentId === appointment.id} onClick={() => updateAppointmentStatus(appointment.id, "Completed")}>
+              <Check size={15} /> Hoàn thành
+            </button>
+            <button type="button" className="doctor-button doctor-button-danger" disabled={updatingAppointmentId === appointment.id} onClick={() => handleOpenRejectModal(appointment)}>
+              <X size={15} /> Hủy / Báo bận
+            </button>
+          </>
+        )}
+        {appointment.status === "Completed" && !existingAppointmentIds.has(Number(appointment.id)) && (
+          <button type="button" className="doctor-button doctor-button-secondary" onClick={() => openRecordForm(appointment)}>
+            <Plus size={15} /> Tạo bệnh án
+          </button>
+        )}
+        {["Completed", "Cancelled", "Rejected"].includes(appointment.status) && !(appointment.status === "Completed" && !existingAppointmentIds.has(Number(appointment.id))) && (
+          <span className="doctor-secondary-text">Không có thao tác</span>
+        )}
       </div></td>}</tr>)}
     </tbody></table></div>;
   }
@@ -282,178 +316,216 @@ useEffect(() => {
       <div className="doctor-panel-heading"><div><h3>Lịch khám đã hoàn thành chưa có bệnh án</h3><p>Chỉ có thể tạo một hồ sơ cho mỗi lịch khám.</p></div><span className="doctor-count">{completedAppointmentsWithoutRecord.length} lịch</span></div>
       {appointmentsError && <div className="doctor-state doctor-state-error" role="alert"><AlertCircle size={18} /><span>{appointmentsError}</span></div>}
       {appointmentsLoading ? renderState("Đang tải lịch khám...") : completedAppointmentsWithoutRecord.length === 0 ? <div className="doctor-empty"><FileText size={30} /><strong>Không có lịch khám cần lập bệnh án</strong><p>Các lịch khám phải ở trạng thái “Đã hoàn thành” và chưa có hồ sơ.</p></div> : <div className="doctor-table-wrap"><table className="doctor-table"><thead><tr><th>BỆNH NHÂN</th><th>NGÀY KHÁM</th><th>LÝ DO KHÁM</th><th>THAO TÁC</th></tr></thead><tbody>{completedAppointmentsWithoutRecord.map((a) => <tr key={a.id}><td><strong>{a.patient_name || `Bệnh nhân #${a.patient_id}`}</strong><br /><span className="doctor-secondary-text">Lịch #{a.id}</span></td><td>{formatDate(a.appointment_date)} · {formatTime(a.appointment_time)}</td><td>{a.reason || "Không có ghi chú"}</td><td><button type="button" className="doctor-button doctor-button-secondary" onClick={() => openRecordForm(a)}><Plus size={15} /> Tạo bệnh án</button></td></tr>)}</tbody></table></div>}
-      <div className="doctor-panel-heading"><div><h3>Hồ sơ đã lập</h3><p>Các hồ sơ bệnh án được API trả về cho tài khoản bác sĩ này.</p></div><span className="doctor-count">{medicalRecords.length} hồ sơ</span></div>
-      {recordsLoading && medicalRecords.length === 0 ? renderState("Đang tải hồ sơ bệnh án...") : medicalRecords.length === 0 ? <div className="doctor-empty"><ClipboardList size={30} /><strong>Chưa có hồ sơ bệnh án</strong><p>Hồ sơ sẽ xuất hiện sau khi bác sĩ lưu bệnh án thành công.</p></div> : <div className="doctor-record-list">{medicalRecords.map((record) => <article className="doctor-record-card" key={record.id}><div className="doctor-panel-heading"><div><h3>Hồ sơ #{record.id}</h3><p>Bệnh nhân #{record.patient_id} · Lịch khám #{record.appointment_id}</p></div><span className="doctor-secondary-text">{formatDate(record.created_at?.slice?.(0, 10))}</span></div><div className="doctor-record-detail"><strong>Triệu chứng / lý do khám</strong><p>{record.chief_complaint || "Chưa ghi"}</p><strong>Chẩn đoán</strong><p>{record.diagnosis || "Chưa ghi"}</p><strong>Kế hoạch điều trị</strong><p>{record.treatment_plan || "Chưa ghi"}</p><strong>Ghi chú bác sĩ</strong><p>{record.doctor_notes || "Không có"}</p></div></article>)}</div>}
     </section>;
   }
 
   function renderContent() {
-    if (activePage === "patients") return <section className="doctor-panel"><div className="doctor-panel-heading"><div><h2>Bệnh nhân của tôi</h2><p>Danh sách bệnh nhân được phân công cho bạn</p></div><span className="doctor-count">{loading ? "Đang tải..." : `${patients.length} bệnh nhân`}</span></div>{renderPatientsTable()}</section>;
-    if (activePage === "appointments") return <section className="doctor-panel"><div className="doctor-panel-heading"><div><h2>Quản lý lịch khám</h2><p>Xem và xử lý các lịch hẹn được phân công cho bạn</p></div><button type="button" className="doctor-button doctor-button-secondary" onClick={loadAppointments} disabled={appointmentsLoading}><RefreshCw size={16} className={appointmentsLoading ? "doctor-spin" : ""} /> Làm mới</button></div>{appointmentsError && <div className="doctor-state doctor-state-error" role="alert"><AlertCircle size={18} /><span>{appointmentsError}</span></div>}<div className="doctor-appointment-filters"><label>Trạng thái <select value={appointmentStatusFilter} onChange={(e) => setAppointmentStatusFilter(e.target.value)}><option value="All">Tất cả</option><option value="Pending">Chờ xác nhận</option><option value="Confirmed">Đã xác nhận</option><option value="Completed">Đã hoàn thành</option><option value="Rejected">Đã từ chối</option><option value="Cancelled">Đã hủy</option></select></label><span className="doctor-count">{filteredAppointments.length} lịch hẹn</span></div>{renderAppointmentsTable()}</section>;
+    if (activePage === "patients") {
+      return (
+        <section className="doctor-panel">
+          <div className="doctor-panel-heading">
+            <div><h2>Danh sách bệnh nhân được phân công</h2><p>Dữ liệu chỉ bao gồm các bệnh nhân có lịch hẹn hoặc hồ sơ với bạn.</p></div>
+            <button type="button" className="doctor-button doctor-button-secondary" onClick={loadPatients} disabled={loading}><RefreshCw size={16} className={loading ? "doctor-spin" : ""} /> Làm mới</button>
+          </div>
+          {renderPatientsTable()}
+        </section>
+      );
+    }
+
+    if (activePage === "appointments") {
+      return (
+        <section className="doctor-panel">
+          <div className="doctor-panel-heading">
+            <div><h2>Lịch khám bệnh</h2><p>Quản lý lịch hẹn, xác nhận, từ chối và hỗ trợ chuyển ca khám.</p></div>
+            <button type="button" className="doctor-button doctor-button-secondary" onClick={loadAppointments} disabled={appointmentsLoading}><RefreshCw size={16} className={appointmentsLoading ? "doctor-spin" : ""} /> Làm mới</button>
+          </div>
+          <div className="doctor-tabs">
+            {["All", "Pending", "Confirmed", "Completed", "Cancelled", "Rejected"].map((tab) => (
+              <button key={tab} type="button" className={`doctor-tab ${appointmentStatusFilter === tab ? "active" : ""}`} onClick={() => setAppointmentStatusFilter(tab)}>
+                {tab === "All" ? "Tất cả" : appointmentStatusLabel(tab)}
+              </button>
+            ))}
+          </div>
+          {renderAppointmentsTable()}
+        </section>
+      );
+    }
+
     if (activePage === "records") return renderRecords();
-    if (activePage === "prescriptions") return <FeaturePlaceholder icon={Pill} title="Quản lý đơn thuốc" description="Chức năng quản lý đơn thuốc chưa được kết nối với API." nextStep="Có thể bổ sung sau khi API đơn thuốc được triển khai." />;
 
-    const today = new Date();
-    const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-   
-return (
-    <>
-      <section className="doctor-welcome">
-        <div>
-          <p className="doctor-eyebrow">KHÔNG GIAN LÀM VIỆC BÁC SĨ</p>
-          <h1>Tổng quan</h1>
-          <p>Chào mừng bạn quay lại. Đây là tổng quan công việc của bạn.</p>
+    if (activePage === "prescriptions") {
+      return (
+        <FeaturePlaceholder
+          icon={Pill}
+          title="Chức năng đơn thuốc đang được hoàn thiện"
+          description="Bác sĩ sẽ có thể kê đơn thuốc trực tiếp từ hồ sơ bệnh án."
+          nextStep="Dữ liệu kê đơn sẽ liên kết với kho dược và bệnh án điện tử."
+        />
+      );
+    }
+
+    return (
+      <>
+        <div className="doctor-stats-grid">
+          <StatCard icon={Users} title="Bệnh nhân phụ trách" value={loading ? "..." : patients.length} note="Được phân công" type="teal" />
+          <StatCard
+            icon={CalendarDays}
+            title="Lịch chờ xác nhận"
+            value={appointmentsLoading ? "..." : appointments.filter((a) => a.status === "Pending").length}
+            note="Cần phản hồi sớm"
+            type="amber"
+          />
+          <StatCard
+            icon={ClipboardList}
+            title="Hồ sơ đã lập"
+            value={recordsLoading ? "..." : medicalRecords.length}
+            note="Bệnh án điện tử"
+            type="blue"
+          />
         </div>
 
-        <div className="doctor-date">
-          <CalendarDays size={18} />
-          {today.toLocaleDateString("vi-VN")}
-        </div>
-      </section>
-
-      <section className="doctor-stats-grid">
-        <StatCard
-          icon={Users}
-          title="Bệnh nhân được phân công"
-          value={loading ? "…" : error ? "—" : patients.length}
-          note={error ? "Không thể tải dữ liệu" : "Bệnh nhân được phân công"}
-          type="teal"
-        />
-
-        <StatCard
-          icon={CalendarDays}
-          title="Lịch khám hôm nay"
-          value={
-            appointmentsLoading
-              ? "…"
-              : appointmentsError
-                ? "—"
-                : appointments.filter(
-                    (a) => a.appointment_date === todayString
-                  ).length
-          }
-          note={appointmentsError ? "Không thể tải dữ liệu" : "Lịch hẹn trong ngày"}
-          type="blue"
-        />
-
-        <StatCard
-          icon={ClipboardList}
-          title="Hồ sơ bệnh án"
-          value={
-            recordsLoading
-              ? "…"
-              : recordsError
-                ? "—"
-                : medicalRecords.length
-          }
-          note={recordsError ? "Không thể tải dữ liệu" : "Hồ sơ truy cập được"}
-          type="purple"
-        />
-
-        <StatCard
-          icon={Clock3}
-          title="Lịch hẹn cần xử lý"
-          value={
-            appointmentsLoading
-              ? "…"
-              : appointmentsError
-                ? "—"
-                : appointments.filter((a) => a.status === "Pending").length
-          }
-          note={appointmentsError ? "Không thể tải dữ liệu" : "Đang chờ bạn xử lý"}
-          type="orange"
-        />
-      </section>
-
-      <section className="doctor-panel">
-        <div className="doctor-panel-heading">
-          <div>
-            <h2>Bệnh nhân được phân công</h2>
-            <p>Thông tin được tải trực tiếp từ backend</p>
+        <section className="doctor-panel">
+          <div className="doctor-panel-heading">
+            <div><h2>Lịch khám sắp tới</h2><p>3 lịch khám gần nhất được phân công cho bạn.</p></div>
+            <button type="button" className="doctor-button doctor-button-secondary" onClick={() => setActivePage("appointments")}>
+              Xem tất cả <ArrowUpRight size={15} />
+            </button>
           </div>
-
-          <button
-            type="button"
-            className="doctor-link-button"
-            onClick={() => setActivePage("patients")}
-          >
-            Xem danh sách <ArrowUpRight size={16} />
-          </button>
-        </div>
-
-        {renderPatientsTable()}
-      </section>
-
-      <section className="doctor-panel">
-        <div className="doctor-panel-heading">
-          <div>
-            <h2>Lịch khám gần đây</h2>
-            <p>Các lịch hẹn được phân công cho bạn</p>
-          </div>
-
-          <button
-            type="button"
-            className="doctor-link-button"
-            onClick={() => setActivePage("appointments")}
-          >
-            Xem lịch khám <ArrowUpRight size={16} />
-          </button>
-        </div>
-
-        <div className="doctor-appointment-summary">
-          {appointmentsLoading && appointments.length === 0 ? (
-            renderState("Đang tải lịch khám...")
-          ) : appointmentsError && appointments.length === 0 ? (
-            renderState(appointmentsError, true)
-          ) : appointments.length === 0 ? (
-            <p className="doctor-secondary-text">Chưa có lịch hẹn.</p>
-          ) : (
-            appointments.slice(0, 3).map((item) => (
-              <div
-                className="doctor-appointment-summary-item"
-                key={item.id}
-              >
-                <div>
-                  <strong>
-                    {item.patient_name || `Bệnh nhân #${item.patient_id}`}
-                  </strong>
-                  <span>
-                    {formatDate(item.appointment_date)} ·{" "}
-                    {formatTime(item.appointment_time)}
-                  </span>
+          <div className="doctor-appointment-summary-list">
+            {appointmentsLoading && appointments.length === 0 ? (
+              <p className="doctor-secondary-text">Đang tải lịch khám...</p>
+            ) : appointments.length === 0 ? (
+              <p className="doctor-secondary-text">Chưa có lịch hẹn.</p>
+            ) : (
+              appointments.slice(0, 3).map((item) => (
+                <div className="doctor-appointment-summary-item" key={item.id}>
+                  <div>
+                    <strong>{item.patient_name || `Bệnh nhân #${item.patient_id}`}</strong>
+                    <span>{formatDate(item.appointment_date)} · {formatTime(item.appointment_time)}</span>
+                  </div>
+                  <span className={`doctor-status ${appointmentStatusClass(item.status)}`}>{appointmentStatusLabel(item.status)}</span>
                 </div>
+              ))
+            )}
+          </div>
+        </section>
 
-                <span
-                  className={`doctor-status ${appointmentStatusClass(item.status)}`}
-                >
-                  {appointmentStatusLabel(item.status)}
-                </span>
-              </div>
-            ))
-          )}
-        </div>
-      </section>
-
-      <section className="doctor-notice">
-        <CheckCircle2 size={20} />
-        <div>
-          <strong>Hệ thống xác thực đã được tích hợp</strong>
-          <p>
-            Danh sách bệnh nhân, lịch khám và hồ sơ bệnh án được tải từ
-            backend theo quyền tài khoản đang đăng nhập.
-          </p>
-        </div>
-      </section>
-    </>
-);
+        <section className="doctor-notice">
+          <CheckCircle2 size={20} />
+          <div>
+            <strong>Hệ thống xác thực đã được tích hợp</strong>
+            <p>Danh sách bệnh nhân, lịch khám và hồ sơ bệnh án được tải từ backend theo quyền tài khoản đang đăng nhập.</p>
+          </div>
+        </section>
+      </>
+    );
   }
 
-  return <div className="doctor-layout">
-    <aside className="doctor-sidebar"><div className="doctor-brand"><div className="doctor-brand-icon"><HeartPulse size={25} /></div><div><strong>Patient Portal</strong><span>DOCTOR WORKSPACE</span></div></div><div className="doctor-sidebar-label">KHÔNG GIAN BÁC SĨ</div><nav className="doctor-nav">{MENU_ITEMS.map((item) => { const Icon = item.icon; return <button key={item.id} type="button" className={`doctor-nav-link ${activePage === item.id ? "active" : ""}`} onClick={() => { setActivePage(item.id); setRecordMessage(""); }}><Icon size={19} /><span>{item.label}</span></button>; })}</nav><div className="doctor-sidebar-bottom"><div className="doctor-profile"><div className="doctor-profile-avatar"><Stethoscope size={19} /></div><div className="doctor-profile-info"><strong>Bác sĩ</strong><span>Tài khoản đang đăng nhập</span></div></div><button type="button" className="doctor-nav-link doctor-logout" onClick={onLogout}><LogOut size={19} /><span>Đăng xuất</span></button></div></aside>
-    <main className="doctor-main"><header className="doctor-header"><div className="doctor-header-title"><Stethoscope size={20} /><span>Doctor Dashboard</span></div><div className="doctor-header-actions"><div className="doctor-role-badge"><CheckCircle2 size={15} />Bác sĩ</div><div className="doctor-header-divider" /><button type="button" className="doctor-notification" aria-label="Thông báo" title="Thông báo" onClick={() => window.alert("Chức năng thông báo sẽ được bổ sung sau.")}><Bell size={19} /></button></div></header>
-      <div className="doctor-content">{(activePage === "patients" || activePage === "appointments" || activePage === "overview") && <div className={`doctor-page-toolbar ${activePage === "overview" ? "doctor-overview-toolbar" : ""}`}><div className="doctor-search"><Search size={18} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={activePage === "appointments" ? "Tìm theo tên bệnh nhân, lý do khám, mã lịch..." : "Tìm bệnh nhân theo tên, mã, email..."} aria-label="Tìm kiếm" /></div>{activePage === "overview" && <button type="button" className="doctor-button doctor-button-secondary" onClick={() => setActivePage("patients")}><Users size={16} /> Danh sách bệnh nhân</button>}</div>}{renderContent()}<footer className="doctor-footer">© 2026 Patient Portal · Hospital Management System</footer></div>
-    </main>
-  </div>;
+  return (
+    <div className="doctor-layout">
+      <aside className="doctor-sidebar">
+        <div className="doctor-brand"><div className="doctor-brand-icon"><HeartPulse size={25} /></div><div><strong>Patient Portal</strong><span>DOCTOR WORKSPACE</span></div></div>
+        <div className="doctor-sidebar-label">KHÔNG GIAN BÁC SĨ</div>
+        <nav className="doctor-nav">
+          {MENU_ITEMS.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button key={item.id} type="button" className={`doctor-nav-link ${activePage === item.id ? "active" : ""}`} onClick={() => { setActivePage(item.id); setRecordMessage(""); }}>
+                <Icon size={19} /><span>{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+        <div className="doctor-sidebar-bottom">
+          <div className="doctor-profile"><div className="doctor-profile-avatar"><Stethoscope size={19} /></div><div className="doctor-profile-info"><strong>Bác sĩ</strong><span>Tài khoản đang đăng nhập</span></div></div>
+          <button type="button" className="doctor-nav-link doctor-logout" onClick={logout}><LogOut size={19} /><span>Đăng xuất</span></button>
+        </div>
+      </aside>
+      <main className="doctor-main">
+        <header className="doctor-header">
+          <div className="doctor-header-title"><Stethoscope size={20} /><span>Doctor Dashboard</span></div>
+          <div className="doctor-header-actions">
+            <div className="doctor-role-badge"><CheckCircle2 size={15} />Bác sĩ</div>
+            <div className="doctor-header-divider" />
+            <button type="button" className="doctor-notification" aria-label="Thông báo" title="Thông báo" onClick={() => window.alert("Chức năng thông báo sẽ được bổ sung sau.")}><Bell size={19} /></button>
+          </div>
+        </header>
+        <div className="doctor-content">
+          {(activePage === "patients" || activePage === "appointments" || activePage === "overview") && (
+            <div className={`doctor-page-toolbar ${activePage === "overview" ? "doctor-overview-toolbar" : ""}`}>
+              <div className="doctor-search">
+                <Search size={18} />
+                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={activePage === "appointments" ? "Tìm theo tên bệnh nhân, lý do khám, mã lịch..." : "Tìm bệnh nhân theo tên, mã, email..."} aria-label="Tìm kiếm" />
+              </div>
+              {activePage === "overview" && (
+                <button type="button" className="doctor-button doctor-button-secondary" onClick={() => setActivePage("patients")}><Users size={16} /> Danh sách bệnh nhân</button>
+              )}
+            </div>
+          )}
+          {renderContent()}
+          <footer className="doctor-footer">© 2026 Patient Portal · Hospital Management System</footer>
+        </div>
+      </main>
+
+      {/* Modal xác nhận từ chối / hủy lịch và chuyển ca khám */}
+      {rejectingAppointment && (
+        <div className="doctors-modal-backdrop" style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+          <div style={{ backgroundColor: "#fff", borderRadius: "0.75rem", padding: "1.5rem", maxWidth: "480px", width: "90%", boxShadow: "0 10px 25px rgba(0,0,0,0.15)" }}>
+            <h3 style={{ marginTop: 0, fontSize: "1.25rem", color: "#1e293b" }}>
+              Từ chối / Hủy lịch hẹn #{rejectingAppointment.id}
+            </h3>
+            <p style={{ color: "#64748b", fontSize: "0.9rem" }}>
+              Bệnh nhân: <strong>{rejectingAppointment.patient_name || `#${rejectingAppointment.patient_id}`}</strong>
+              <br />
+              Thời gian: {formatDate(rejectingAppointment.appointment_date)} lúc {formatTime(rejectingAppointment.appointment_time)}
+            </p>
+
+            <form onSubmit={handleConfirmReject} style={{ display: "flex", flexDirection: "column", gap: "1rem", marginTop: "1rem" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "0.875rem", fontWeight: 500, color: "#334155", marginBottom: "0.25rem" }}>
+                  Lý do vắng mặt / hủy khám (Notes):
+                </label>
+                <textarea
+                  rows={3}
+                  style={{ width: "100%", padding: "0.5rem", border: "1px solid #cbd5e1", borderRadius: "0.375rem" }}
+                  placeholder="Ví dụ: Bác sĩ có ca mổ cấp cứu đột xuất..."
+                  value={rejectForm.notes}
+                  onChange={(e) => setRejectForm({ ...rejectForm, notes: e.target.value })}
+                />
+              </div>
+
+              <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.875rem", color: "#1e293b", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={rejectForm.reassign_to_other_doctor}
+                  onChange={(e) => setRejectForm({ ...rejectForm, reassign_to_other_doctor: e.target.checked })}
+                />
+                Tự động chuyển bệnh nhân sang đồng nghiệp cùng chuyên khoa
+              </label>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", marginTop: "0.5rem" }}>
+                <button
+                  type="button"
+                  className="doctor-button doctor-button-secondary"
+                  onClick={() => setRejectingAppointment(null)}
+                  disabled={updatingAppointmentId === rejectingAppointment.id}
+                >
+                  Đóng
+                </button>
+                <button
+                  type="submit"
+                  className="doctor-button doctor-button-danger"
+                  disabled={updatingAppointmentId === rejectingAppointment.id}
+                >
+                  {updatingAppointmentId === rejectingAppointment.id ? "Đang xử lý..." : "Xác nhận từ chối"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function StatCard({ icon: Icon, title, value, note, type }) {

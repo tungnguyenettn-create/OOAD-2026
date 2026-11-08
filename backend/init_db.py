@@ -1,5 +1,6 @@
 from database import Base, engine
 import models
+from seed_data import seed_data
 
 
 def init_database():
@@ -13,6 +14,9 @@ def init_database():
 
     for table_name in Base.metadata.tables:
         print(f"- {table_name}")
+
+    print("\nStarting auto-seeding...")
+    seed_data()
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 import getpass
 
 from database import SessionLocal
-from models import User, Doctor
+from models import User, Doctor, Department
 from auth import hash_password
 
 
@@ -69,13 +69,24 @@ def create_doctor():
         db.add(user)
         db.flush()
 
+        dept_obj = (
+            db.query(Department).filter(Department.name == department).first()
+            if department
+            else None
+        )
+
         doctor = Doctor(
             user_id=user.id,
             full_name=full_name,
-            specialization=specialization,
+            specialization=(
+                dept_obj.specialization
+                if (dept_obj and dept_obj.specialization)
+                else specialization
+            ),
             license_number=license_number,
             phone=phone or None,
-            department=department or None,
+            department=dept_obj.name if dept_obj else (department or None),
+            department_id=dept_obj.id if dept_obj else None,
         )
 
         db.add(doctor)

@@ -1,0 +1,5 @@
+/* Gom toàn bộ style của Patient Dashboard.
+   Biến màu (--pt-*) và dark mode được khai báo trong layout.css trên .pt-layout */
+@import "../../styles/patient/layout.css";
+@import "../../styles/patient/common.css";
+@import "../../styles/patient/pages.css";

@@ -1,0 +1,413 @@
+/* ===== Patient · Thành phần dùng chung ===== */
+
+/* ----- Tiêu đề trang ----- */
+.pt-welcome {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 25px;
+}
+
+.pt-eyebrow {
+  margin: 0 0 8px;
+  color: var(--pt-primary);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+}
+
+.pt-welcome h1 {
+  margin: 0;
+  color: var(--pt-head);
+  font-size: 29px;
+  letter-spacing: -0.9px;
+}
+
+.pt-sub {
+  margin: 9px 0 0;
+  color: var(--pt-muted);
+  font-size: 12px;
+}
+
+.pt-chip-date {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 14px;
+  border: 1px solid var(--pt-border);
+  border-radius: 8px;
+  background: var(--pt-card);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* ----- Panel ----- */
+.pt-panel {
+  margin-bottom: 22px;
+  overflow: hidden;
+  border: 1px solid var(--pt-border);
+  border-radius: 12px;
+  background: var(--pt-card);
+  box-shadow: 0 3px 12px rgba(29, 57, 84, 0.03);
+}
+
+.pt-panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 22px 21px;
+}
+
+.pt-panel-head h2 {
+  margin: 0;
+  color: var(--pt-head);
+  font-size: 15px;
+}
+
+.pt-panel-head p {
+  margin: 6px 0 0;
+  color: var(--pt-muted);
+  font-size: 11px;
+}
+
+.pt-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.pt-count {
+  padding: 7px 10px;
+  border-radius: 7px;
+  color: var(--pt-primary);
+  background: var(--pt-soft);
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* ----- Nút ----- */
+.pt-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 9px 14px;
+  border: 1px solid var(--pt-primary);
+  border-radius: 8px;
+  background: var(--pt-primary);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.pt-btn:hover:not(:disabled) {
+  background: var(--pt-primary-d);
+}
+
+.pt-btn--secondary {
+  border-color: var(--pt-border);
+  background: var(--pt-card);
+  color: var(--pt-muted);
+}
+
+.pt-btn--secondary:hover:not(:disabled) {
+  border-color: var(--pt-primary);
+  background: var(--pt-card);
+  color: var(--pt-primary);
+}
+
+.pt-btn--danger {
+  border-color: var(--pt-bad-b);
+  background: var(--pt-card);
+  color: var(--pt-bad-t);
+}
+
+.pt-btn--danger:hover:not(:disabled) {
+  background: var(--pt-bad-b);
+}
+
+.pt-btn--sm {
+  min-height: 32px;
+  padding: 6px 10px;
+}
+
+.pt-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* ----- Form ----- */
+.pt-layout select,
+.pt-layout input,
+.pt-layout textarea {
+  width: 100%;
+  padding: 11px 13px;
+  border: 1px solid var(--pt-border);
+  border-radius: 10px;
+  outline: none;
+  background: var(--pt-input);
+  color: var(--pt-text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.pt-layout select:focus,
+.pt-layout input:focus,
+.pt-layout textarea:focus {
+  border-color: var(--pt-primary);
+  box-shadow: 0 0 0 3px rgba(8, 139, 151, 0.15);
+}
+
+.pt-layout input:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.pt-layout textarea {
+  resize: vertical;
+}
+
+.pt-tools select {
+  width: auto;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.pt-form-card {
+  padding: 28px 30px;
+}
+
+.pt-grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px 22px;
+}
+
+.pt-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.pt-field label {
+  color: var(--pt-head);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pt-full {
+  grid-column: 1 / -1;
+}
+
+.pt-hint {
+  margin: 0;
+  color: var(--pt-muted);
+  font-size: 12px;
+}
+
+.pt-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 26px;
+  padding-top: 20px;
+  border-top: 1px solid var(--pt-border);
+}
+
+.pt-form-actions .pt-btn {
+  min-height: 42px;
+  padding: 0 20px;
+  font-size: 13px;
+}
+
+/* ----- Bảng ----- */
+.pt-table-wrap {
+  overflow-x: auto;
+}
+
+.pt-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.pt-table thead {
+  background: var(--pt-bg);
+}
+
+.pt-table th {
+  padding: 13px 16px;
+  color: var(--pt-muted);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.pt-table td {
+  padding: 15px 16px;
+  border-top: 1px solid var(--pt-border);
+  font-size: 11px;
+  vertical-align: middle;
+}
+
+.pt-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pt-cell-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  color: var(--pt-primary);
+  background: var(--pt-soft);
+}
+
+.pt-cell strong {
+  display: block;
+  color: var(--pt-head);
+  font-size: 11px;
+}
+
+.pt-cell span,
+.pt-secondary {
+  display: block;
+  margin-top: 2px;
+  color: var(--pt-muted);
+  font-size: 10px;
+}
+
+/* ----- Huy hiệu trạng thái ----- */
+.pt-status {
+  display: inline-flex;
+  padding: 6px 9px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.pt-status--wait {
+  color: var(--pt-wait-t);
+  background: var(--pt-wait-b);
+}
+
+.pt-status--ok {
+  color: var(--pt-ok-t);
+  background: var(--pt-ok-b);
+}
+
+.pt-status--off {
+  color: var(--pt-off-t);
+  background: var(--pt-off-b);
+}
+
+.pt-status--bad {
+  color: var(--pt-bad-t);
+  background: var(--pt-bad-b);
+}
+
+/* ----- Trạng thái rỗng / đang tải / lỗi ----- */
+.pt-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 40px;
+  color: var(--pt-muted);
+  text-align: center;
+}
+
+.pt-empty p {
+  margin: 0;
+}
+
+.pt-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 36px 21px;
+  color: var(--pt-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.pt-state--error {
+  flex-wrap: wrap;
+  color: var(--pt-bad-t);
+}
+
+.pt-spin {
+  animation: pt-spin 1s linear infinite;
+}
+
+@keyframes pt-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ----- Toast ----- */
+.pt-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  z-index: 30;
+  max-width: calc(100vw - 32px);
+  padding: 12px 18px;
+  border-radius: 10px;
+  background: var(--pt-head);
+  color: var(--pt-card);
+  font-size: 12px;
+  font-weight: 600;
+  transform: translateX(-50%);
+  animation: pt-toast-in 0.25s ease;
+}
+
+.pt-toast--error {
+  background: var(--pt-bad-t);
+  color: #fff;
+}
+
+@keyframes pt-toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 20px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@media (max-width: 600px) {
+  .pt-grid2 {
+    grid-template-columns: 1fr;
+  }
+
+  .pt-form-card {
+    padding: 20px 16px;
+  }
+
+  .pt-welcome h1 {
+    font-size: 25px;
+  }
+
+  /* tránh đè lên thanh điều hướng dưới */
+  .pt-toast {
+    bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+  }
+}
