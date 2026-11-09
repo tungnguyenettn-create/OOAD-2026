@@ -9,12 +9,19 @@ import useCancelAppointment from "../../hooks/useCancelAppointment";
 import useBooking from "../../hooks/useBooking";
 import useNotifications from "../../hooks/useNotifications";
 import usePatientProfile from "../../hooks/usePatientProfile";
+import useHealthMetrics from "../../hooks/useHealthMetrics";
+import useRecordDocuments from "../../hooks/useRecordDocuments";
+import usePasswordChange from "../../hooks/usePasswordChange";
+import useResource from "../../hooks/useResource";
+import { API_PRESCRIPTIONS } from "../../utils/constants";
 
 import StateMessage from "../../components/patient/StateMessage";
 import Toast from "../../components/patient/Toast";
 import AppointmentsView from "./views/AppointmentsView";
 import BookView from "./views/BookView";
 import RecordsView from "./views/RecordsView";
+import PrescriptionsView from "./views/PrescriptionsView";
+import MetricsView from "./views/MetricsView";
 import NotificationsView from "./views/NotificationsView";
 import ProfileView from "./views/ProfileView";
 
@@ -40,6 +47,8 @@ export default function PatientDashboard() {
   });
 
   function navigate(pageId) {
+    if (pageId === "prescriptions") prescriptions.load();
+    if (pageId === "metrics") metrics.load();
     setActivePage(pageId);
     window.scrollTo(0, 0);
   }
@@ -54,6 +63,13 @@ export default function PatientDashboard() {
   });
 
   const profile = usePatientProfile({ request, patient, setPatient: data.setPatient, notify });
+  const prescriptions = useResource(request, API_PRESCRIPTIONS, {
+    errorMessage: "Không thể tải đơn thuốc.",
+    invalidMessage: "Dữ liệu đơn thuốc không hợp lệ.",
+  });
+  const metrics = useHealthMetrics({ request, notify });
+  const documents = useRecordDocuments({ request, token, notify });
+  const password = usePasswordChange({ request, notify });
 
   function renderPage() {
     if (data.patientLoading && !patient) return <StateMessage message="Đang tải dữ liệu..." />;
@@ -81,11 +97,15 @@ export default function PatientDashboard() {
             onCancel={() => navigate("appointments")}
           />;
       case "records":
-        return <RecordsView records={records} />;
+        return <RecordsView records={records} documents={documents} />;
+      case "prescriptions":
+        return <PrescriptionsView prescriptions={prescriptions} />;
+      case "metrics":
+        return <MetricsView metrics={metrics} />;
       case "notifications":
         return <NotificationsView notifications={notifications} />;
       case "profile":
-        return <ProfileView patient={patient} profile={profile} />;
+        return <ProfileView patient={patient} profile={profile} password={password} />;
       default:
         return (
           <AppointmentsView

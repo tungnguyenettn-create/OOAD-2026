@@ -1,5 +1,6 @@
 import { ClipboardList } from "lucide-react";
 import StateMessage from "./StateMessage";
+import DocumentList from "./DocumentList";
 import { formatDate } from "../../utils/patientHelpers";
 
 function Field({ label, value, fallback = "Chưa cập nhật" }) {
@@ -11,7 +12,7 @@ function Field({ label, value, fallback = "Chưa cập nhật" }) {
   );
 }
 
-export default function MedicalRecordList({ records, loading, error }) {
+export default function MedicalRecordList({ records, loading, error, documents }) {
   if (loading && records.length === 0) return <StateMessage message="Đang tải lịch sử khám bệnh..." />;
   if (error && records.length === 0) return <StateMessage variant="error" message={error} />;
 
@@ -36,6 +37,13 @@ export default function MedicalRecordList({ records, loading, error }) {
           <Field label="Chẩn đoán" value={r.diagnosis} />
           <Field label="Hướng điều trị" value={r.treatment_plan} />
           {r.doctor_notes && <Field label="Ghi chú bác sĩ" value={r.doctor_notes} />}
+          <div className="pt-record-docs">
+            <h4>Tài liệu đính kèm</h4>
+            <DocumentList
+              documents={documents?.byRecord?.[r.id]}
+              onDownload={documents?.download}
+            />
+          </div>
         </article>
       ))}
     </div>

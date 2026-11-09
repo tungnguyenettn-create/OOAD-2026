@@ -46,6 +46,13 @@ export function formatDate(value) {
 
 export const formatTime = (value) => String(value || "").slice(0, 5);
 
+export function formatDateTime(value) {
+  if (!value) return "Chưa cập nhật";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value);
+  return parsed.toLocaleString("vi-VN");
+}
+
 /** Khung giờ đã trôi qua (chỉ áp dụng khi chọn ngày hôm nay). */
 export function isPastSlot(date, time) {
   if (date !== getLocalDate()) return false;

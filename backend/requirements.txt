@@ -5,3 +5,5 @@ pymysql
 pwdlib[argon2]
 PyJWT
 email-validator
+python-dotenv
+python-multipart

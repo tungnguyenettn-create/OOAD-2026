@@ -20,5 +20,9 @@ venv/
 .DS_Store
 Thumbs.db
 
+# Local development database and uploaded files
+backend/patient_portal_local.db
+backend/medical_files/
+
 # Database backups
 patient_portal_backup.sql

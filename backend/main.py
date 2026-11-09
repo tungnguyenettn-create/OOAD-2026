@@ -36,6 +36,7 @@ from fastapi.responses import FileResponse
 from auth import create_access_token, verify_password, hash_password
 from models import User
 from schemas import LoginRequest, TokenResponse
+from patient_features import router as patient_features_router
 app = FastAPI(title="Patient Portal API")
 
 app.add_middleware(
@@ -48,6 +49,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(patient_features_router)
 
 
 # =========================
@@ -1372,6 +1375,25 @@ def create_appointment(
 
     try:
         db.add(appointment)
+
+        # Bảo đảm bác sĩ được phân công cũng thấy bệnh nhân trong danh sách.
+        assignment = (
+            db.query(DoctorPatient)
+            .filter(
+                DoctorPatient.doctor_id == doctor.id,
+                DoctorPatient.patient_id == patient.id,
+            )
+            .first()
+        )
+
+        if assignment is None:
+            db.add(
+                DoctorPatient(
+                    doctor_id=doctor.id,
+                    patient_id=patient.id,
+                )
+            )
+
         db.commit()
         db.refresh(appointment)
 
@@ -1769,17 +1791,20 @@ def get_medical_documents(
         if not doctor:
             raise HTTPException(status_code=403, detail="Access denied")
 
-        assignment = (
-            db.query(DoctorPatient)
-            .filter(
-                DoctorPatient.doctor_id == doctor.id,
-                DoctorPatient.patient_id == record.patient_id,
+        # Bác sĩ được xem tài liệu của hồ sơ do mình lập
+        # hoặc hồ sơ của bệnh nhân được phân công.
+        if record.doctor_id != doctor.id:
+            assignment = (
+                db.query(DoctorPatient)
+                .filter(
+                    DoctorPatient.doctor_id == doctor.id,
+                    DoctorPatient.patient_id == record.patient_id,
+                )
+                .first()
             )
-            .first()
-        )
 
-        if not assignment:
-            raise HTTPException(status_code=403, detail="Access denied")
+            if not assignment:
+                raise HTTPException(status_code=403, detail="Access denied")
 
     elif current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Access denied")
@@ -1856,17 +1881,20 @@ def download_medical_document(
         if not doctor:
             raise HTTPException(status_code=403, detail="Access denied")
 
-        assignment = (
-            db.query(DoctorPatient)
-            .filter(
-                DoctorPatient.doctor_id == doctor.id,
-                DoctorPatient.patient_id == record.patient_id,
+        # Bác sĩ được tải tài liệu của hồ sơ do mình lập
+        # hoặc hồ sơ của bệnh nhân được phân công.
+        if record.doctor_id != doctor.id:
+            assignment = (
+                db.query(DoctorPatient)
+                .filter(
+                    DoctorPatient.doctor_id == doctor.id,
+                    DoctorPatient.patient_id == record.patient_id,
+                )
+                .first()
             )
-            .first()
-        )
 
-        if not assignment:
-            raise HTTPException(status_code=403, detail="Access denied")
+            if not assignment:
+                raise HTTPException(status_code=403, detail="Access denied")
 
     elif current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Access denied")
